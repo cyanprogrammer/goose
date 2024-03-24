@@ -1,5 +1,4 @@
 # goose
-Are there any open ports, to anything, on your network?
+Goose will scan various IPv4 addresses, find ones with open SSH ports, and try to hack them. 
 
-Screenshot of Goose in progress.
-![image](https://github.com/cyanprogrammer/goose/assets/78051875/6143a17e-22cd-4b9a-9679-3d9d9f012d74)
+#WARNING! USAGE OF THIS SOFTWARE IN ITS CURRENT STATE IS PROBABLY ILLEGAL. USE AT YOUR OWN RISK.
